@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tájékozódás</title>
+<style>
+body {
+    margin:0;
+    font-family:Arial;
+    background:#58cc02;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+}
+.container {
+    background:white;
+    width:95%;
+    max-width:420px;
+    border-radius:15px;
+    padding:15px;
+    margin:15px auto;
+}
+button {
+    width:100%;
+    padding:14px;
+    margin:6px 0;
+    font-size:16px;
+    border-radius:10px;
+    border:2px solid #ddd;
+    background:#f9f9f9;
+    cursor:pointer;
+}
+button:hover:not(:disabled) { background:#eee; }
+.correct { background:#4CAF50!important; color:white; border-color:#4CAF50!important; }
+.wrong   { background:#f44336!important; color:white; border-color:#f44336!important; }
+#progressBar {
+    height:10px;
+    background:#ddd;
+    border-radius:10px;
+    overflow:hidden;
+    margin-bottom:10px;
+}
+#progress { height:100%; background:#4CAF50; transition:width 0.3s; }
+#avatar { font-size:38px; margin-bottom:5px; }
+#message { color:#f44336; min-height:18px; font-size:14px; }
+#levelup { color:#ff9800; font-weight:bold; text-align:center; font-size:18px; }
+#explanation { background:#fff8e1; border-left:4px solid #ff9800; padding:8px 10px; border-radius:6px; margin:8px 0; font-size:14px; display:none; }
+#startBtn { background:#58cc02; color:white; border:none; font-size:18px; font-weight:bold; }
+.stat { text-align:center; font-size:14px; color:#888; margin:4px 0; }
+#endScore { font-size:48px; font-weight:bold; text-align:center; color:#4CAF50; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h3 style="margin-top:5px;">🌍 Tájékozódás</h3>
+
+  <div id="menu">
+    <p>Tanulj a tájékozódásról és a világtájakról!<br>Minden kör 10 kérdésből áll.</p>
+    <button id="startBtn" onclick="newGame()">▶ Új játék</button>
+    <button id="continueBtn" onclick="continueGame()" style="display:none; background:#1cb0f6; color:white; border-color:#1cb0f6;">↩ Folytatás</button>
+    <div id="savedInfo" style="font-size:13px; color:#888; text-align:center; margin-top:4px;"></div>
+  </div>
+
+  <div id="gameArea" style="display:none;">
+    <div id="avatar"></div>
+    <div id="progressBar"><div id="progress" style="width:0%"></div></div>
+    <div id="counter" class="stat"></div>
+    <div id="levelup"></div>
+    <div id="question"></div>
+    <div id="answers"></div>
+    <div id="explanation"></div>
+    <div id="message"></div>
+    <button id="nextBtn" onclick="next()" style="display:none; background:#1cb0f6; color:white; border-color:#1cb0f6;">Tovább →</button>
+  </div>
+
+  <div id="endArea" style="display:none;">
+    <h2 style="text-align:center;">Kör vége!</h2>
+    <div id="endScore"></div>
+    <div id="endMsg" class="stat"></div>
+    <div id="levelupEnd" style="color:#ff9800; font-weight:bold; text-align:center; font-size:18px; margin:8px 0;"></div>
+    <button style="background:#58cc02; color:white; border:none; font-weight:bold;" onclick="newGame()">▶ Következő kör</button>
+  </div>
+
+</div>
+
+<script>
+/* HANG */
+function sound(freq){
+    try {
+        const ctx=new (window.AudioContext||window.webkitAudioContext)();
+        const o=ctx.createOscillator();
+        const g=ctx.createGain();
+        o.frequency.value=freq;
+        o.connect(g); g.connect(ctx.destination);
+        o.start(); g.gain.setTargetAtTime(0,ctx.currentTime+0.1,0.05);
+        setTimeout(()=>o.stop(),200);
+    } catch(e){}
+}
+
+/* AVATAR */
+function getAvatar(level){
+    const a=["🐣","🐤","🐥","🐔","🦉","🦅","🌟","👑"];
+    return a[Math.min(level-1, a.length-1)];
+}
+
+/* 50 KÉRDÉS */
+const allQuestions = [
+  {q:"Hány fővilágtáj van?", a:["2","3","4","6"], c:2, e:"4 fővilágtáj van: észak, dél, kelet, nyugat."},
+  {q:"Mi az É betű jelentése a térképen?", a:["Éghajlat","Észak","Éjszaka","Égbolt"], c:1, e:"É = Észak."},
+  {q:"Mi a D betű jelentése a térképen?", a:["Domb","Dél","Duna","Délután"], c:1, e:"D = Dél."},
+  {q:"Mi a K betű jelentése a térképen?", a:["Kelet","Közép","Kunyhó","Kő"], c:0, e:"K = Kelet – a napkelte iránya."},
+  {q:"Mi a Ny betű jelentése a térképen?", a:["Nyár","Nyugat","Nyúl","Nyomvonal"], c:1, e:"Ny = Nyugat – a napnyugta iránya."},
+  {q:"Merre kel fel a Nap?", a:["Észak","Dél","Kelet","Nyugat"], c:2, e:"A Nap keleten kel fel – innen a 'napkelte' szó."},
+  {q:"Merre nyugszik le a Nap?", a:["Észak","Kelet","Dél","Nyugat"], c:3, e:"A Nap nyugaton nyugszik – innen a 'napnyugta' szó."},
+  {q:"Ha előtted észak van, mi van mögötted?", a:["Kelet","Nyugat","Dél","Semmi"], c:2, e:"Ha észak előtted, dél hátad mögött van."},
+  {q:"Ha észak felé nézel, mi van bal kézre?", a:["Észak","Kelet","Dél","Nyugat"], c:3, e:"'Balra a Nap nyugszik' – tehát bal felé nyugat van."},
+  {q:"Ha észak felé nézel, mi van jobb kézre?", a:["Dél","Nyugat","Kelet","Észak"], c:2, e:"'Jobbra pedig kél' – tehát jobb felé kelet van."},
+  {q:"Hány mellékvilágtáj van?", a:["2","4","6","8"], c:1, e:"4 mellékvilágtáj van: ÉK, ÉNy, DK, DNy."},
+  {q:"Mit jelent az ÉK rövidítés?", a:["Éjszakai Kör","Északkelet","Erdei Kút","Égkelet"], c:1, e:"ÉK = Északkelet – az észak és kelet közötti irány."},
+  {q:"Mit jelent az ÉNy rövidítés?", a:["Északi Nyár","Éjnyugat","Északnyugat","Éjszakai Nyomvonal"], c:2, e:"ÉNy = Északnyugat – az észak és nyugat közötti irány."},
+  {q:"Mit jelent a DK rövidítés?", a:["Délkelet","Délkeleti Kör","Déli Kunyhó","Domb-Kút"], c:0, e:"DK = Délkelet – a dél és kelet közötti irány."},
+  {q:"Mit jelent a DNy rövidítés?", a:["Dél-Nyár","Délnyugat","Duna-Nyomvonal","Déli Nyugvó"], c:1, e:"DNy = Délnyugat – a dél és nyugat közötti irány."},
+  {q:"Összesen hány égtáj van (fő- és mellék együtt)?", a:["4","6","8","10"], c:2, e:"4 fővilágtáj + 4 mellékvilágtáj = 8 égtáj összesen."},
+  {q:"Észak és Kelet között melyik mellékvilágtáj van?", a:["Délkelet","Északkelet","Északnyugat","Délnyugat"], c:1, e:"Észak és Kelet között = Északkelet (ÉK)."},
+  {q:"Dél és Nyugat között melyik mellékvilágtáj van?", a:["Délkelet","Északkelet","Délnyugat","Északnyugat"], c:2, e:"Dél és Nyugat között = Délnyugat (DNy)."},
+  {q:"Észak és Nyugat között melyik mellékvilágtáj van?", a:["Délkelet","Délnyugat","Északkelet","Északnyugat"], c:3, e:"Észak és Nyugat között = Északnyugat (ÉNy)."},
+  {q:"Dél és Kelet között melyik mellékvilágtáj van?", a:["Délkelet","Délnyugat","Északkelet","Északnyugat"], c:0, e:"Dél és Kelet között = Délkelet (DK)."},
+  {q:"Mi mutat mindig észak–dél irányba?", a:["Nap","Iránytű","Hold","Szél"], c:1, e:"Az iránytű mutatója mindig É–D irányba áll."},
+  {q:"Az iránytű melyik vége mutat északra?", a:["Fehér","Fekete","Piros","Kék"], c:2, e:"A piros (színezett) vége mutat észak felé."},
+  {q:"Mi befolyásolja az iránytű mutatóját?", a:["Napfény","Nagyfeszültségű villanyvezeték","Szél","Eső"], c:1, e:"Villanyvezetékek, vasúti sínek és vaskerítések eltérítik az iránytű mutatóját."},
+  {q:"Hol találták fel az iránytűhöz hasonló eszközt?", a:["Egyiptomban","Görögországban","Kínában","Rómában"], c:2, e:"Kínában készítették az első ilyen eszközt, több mint 3000 éve."},
+  {q:"Hogyan kell tartani az iránytűt?", a:["Ferdén","Vízszintesen","Fejjel lefelé","Függőlegesen"], c:1, e:"Vízszintes helyzetbe kell helyezni, majd megvárni, amíg a mutató megáll."},
+  {q:"Mit jelent az N betű az iránytűn?", a:["Napkelte","Négyzet","North = Észak","Nedvesség"], c:2, e:"N = North = Észak."},
+  {q:"Mit jelent az S betű az iránytűn?", a:["South = Dél","Szél","Sötét","Sebesség"], c:0, e:"S = South = Dél."},
+  {q:"Mit jelent az E betű az iránytűn?", a:["Égbolt","East = Kelet","Esti","Erő"], c:1, e:"E = East = Kelet."},
+  {q:"Mit jelent a W betű az iránytűn?", a:["West = Nyugat","Width","Wald","Watt"], c:0, e:"W = West = Nyugat."},
+  {q:"Miért érzékeny az iránytű?", a:["Megolvad napon","Könnyen károsodhat, ütésre is","Elveszíti a színét","Nehezebb lesz"], c:1, e:"Érzékeny szerkezet – nem ajánlott napon tartani, és erős ütés sem érheti."},
+  {q:"Hol nő több moha a fa törzsén?", a:["Déli oldalon","Keleti oldalon","Északi oldalon","Nyugati oldalon"], c:2, e:"Az északi oldalon több moha nő, mert ott kevesebb a napfény."},
+  {q:"Melyik csillag mutat észak felé?", a:["Vénusz","Sarkcsillag","Mars","Hold"], c:1, e:"A Sarkcsillag mindig az északi irányt mutatja."},
+  {q:"Melyik csillagkép segít megtalálni a Sarkcsilllagot?", a:["Orion","Göncölszekér","Hattyú","Skorpió"], c:1, e:"A Göncölszekér két hátsó csillagának vonalát meghosszabbítva megtalálod a Sarkcsilllagot."},
+  {q:"Mikor lehet a Sarkcsillag szerint tájékozódni?", a:["Nappal","Felhős időben","Tiszta égboltú éjszakán","Esőben"], c:2, e:"Csak tiszta égboltú éjszakán látható a Sarkcsillag."},
+  {q:"Melyik természetes jelenség segít nappal tájékozódni?", a:["Hold","Sarkcsillag","Nap járása","Szél iránya"], c:2, e:"A Nap járása alapján nappal is meg lehet határozni az égtájakat."},
+  {q:"Kik használják az iránytűt?", a:["Csak turisták","Pilóták, hajósok, katonák, turisták","Csak katonák","Csak hajósok"], c:1, e:"Pilóták, hajóskapitányok, katonák és kirándulók egyaránt használják."},
+  {q:"Miért vannak az iránytűk angolul feliratva?", a:["Mert Angliában találták fel","Hogy mindenki egyformán értse","Mert szebb","Nincs rá ok"], c:1, e:"Az angol feliratok segítenek, hogy a különböző anyanyelvű emberek egyformán értelmezzék."},
+  {q:"Mit jelent a napkelte szó?", a:["A Nap lenyugvása","A Nap felkelése keleten","A Nap delelése","A Nap árnyéka"], c:1, e:"Napkelte = a Nap felkelése keleti irányban."},
+  {q:"Mit jelent a napnyugta szó?", a:["A Nap felkelése","A Nap lenyugvása nyugaton","A Nap árnyéka","A reggeli fény"], c:1, e:"Napnyugta = a Nap lenyugvása nyugati irányban."},
+  {q:"Mire használjuk a világtájakat?", a:["Időmérésre","Tájékozódásra","Hőmérséklet mérésére","Távolság mérésére"], c:1, e:"A világtájak segítségével tájékozódunk a térben."},
+  {q:"Hogyan lehet saját iránytűt készíteni?", a:["Tükörrel","Mágnesezett tűvel és vizes tálkával","Fával és kővel","Papírral"], c:1, e:"Mágnesezett tűt parafa dugóra erősítve, vízzel teli tálkában úsztatva elkészíthető a házi iránytű."},
+  {q:"Hogyan kell a varrótűt mágnesezni?", a:["Vízbe áztatni","10-15-ször mágnest húzni végig rajta egy irányban","Tűzbe tartani","Megcsavarni"], c:1, e:"Egy irányban 10-15-ször húzd végig a mágnest a tűn – így mágneseződik."},
+  {q:"Mire alapoztak a régi hajósok éjjeli tájékozódásnál?", a:["Szélre","A csillagok állására","A hullámok irányára","A halak viselkedésére"], c:1, e:"Éjjel a csillagok állása alapján tájékozódtak a hajósok."},
+  {q:"Melyik két fővilágtáj között van az Északkelet?", a:["Észak és Dél","Észak és Kelet","Kelet és Dél","Nyugat és Észak"], c:1, e:"Északkelet (ÉK) = Észak és Kelet között."},
+  {q:"Melyik két fővilágtáj között van a Délnyugat?", a:["Észak és Nyugat","Kelet és Dél","Dél és Nyugat","Észak és Kelet"], c:2, e:"Délnyugat (DNy) = Dél és Nyugat között."},
+  {q:"Ha a Nap épp nyugszik, melyik irányba mutat?", a:["Észak","Kelet","Dél","Nyugat"], c:3, e:"A Nap nyugaton nyugszik."},
+  {q:"Ha szembe fordulsz a kelő Nappal, mi van hátad mögött?", a:["Kelet","Észak","Nyugat","Dél"], c:2, e:"Ha kelet felé nézel, hátad mögött nyugat van."},
+  {q:"Melyik állítás igaz az iránytűre?", a:["Mindig keletre mutat","Mutatója É–D irányba áll","Csak nappal működik","Mindig délre mutat"], c:1, e:"Az iránytű mutatója mindig észak–dél irányba áll."},
+  {q:"Mi NEM befolyásolja az iránytűt?", a:["Vasúti sín","Villanyvezeték","Vaskerítés","Fakerítés"], c:3, e:"A fakerítés nem befolyásolja. A fémek és erős elektromos mezők igen."},
+  {q:"Milyen eszközzel határozzuk meg pontosan a világtájakat?", a:["Vonalzóval","Naptárral","Iránytűvel","Hőmérővel"], c:2, e:"A világtájak pontos meghatározására iránytűt használunk."},
+];
+
+/* STATE */
+const SAVE_KEY = "tajekozodas_state";
+
+function saveState(){
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+}
+
+function loadState(){
+    try {
+        const saved = localStorage.getItem(SAVE_KEY);
+        if(saved) return JSON.parse(saved);
+    } catch(e){}
+    return null;
+}
+
+let state = { questions:[], current:0, score:0, level:1, rounds:0, used:[] };
+let answered = false;
+
+/* GENERÁLÁS */
+function generateQuestions(){
+    let available = allQuestions.filter(q => !state.used.includes(q.q));
+    if(available.length < 10){
+        state.used = [];
+        available = [...allQuestions];
+    }
+    let result = [];
+    while(result.length < 10){
+        let q = available[Math.floor(Math.random() * available.length)];
+        if(!result.includes(q)) result.push(q);
+    }
+    state.used.push(...result.map(q => q.q));
+    return result;
+}
+
+/* NEW GAME */
+function newGame(){
+    state.questions = generateQuestions();
+    state.current = 0;
+    state.score = 0;
+    document.getElementById("menu").style.display = "none";
+    document.getElementById("endArea").style.display = "none";
+    document.getElementById("gameArea").style.display = "block";
+    show();
+}
+
+/* SHOW */
+function show(){
+    answered = false;
+    document.getElementById("message").innerText = "";
+    document.getElementById("levelup").innerText = "";
+    document.getElementById("explanation").style.display = "none";
+    document.getElementById("nextBtn").style.display = "none";
+
+    let q = state.questions[state.current];
+    let percent = (state.current / state.questions.length) * 100;
+
+    document.getElementById("avatar").innerHTML =
+        `${getAvatar(state.level)} <span style="font-size:15px;color:#888;">Lv.${state.level}</span>`;
+    document.getElementById("progress").style.width = percent + "%";
+    document.getElementById("counter").innerText =
+        `${state.current + 1} / ${state.questions.length}  •  ✅ ${state.score}`;
+
+    document.getElementById("question").innerHTML =
+        `<h3 style="margin:10px 0;">${q.q}</h3>`;
+
+    let html = "";
+    q.a.forEach((ans, i) => {
+        html += `<button onclick="answer(${i})">${ans}</button>`;
+    });
+    document.getElementById("answers").innerHTML = html;
+}
+
+/* ANSWER */
+function answer(i){
+    if(answered) return;
+    answered = true;
+
+    let q = state.questions[state.current];
+    let btns = document.querySelectorAll("#answers button");
+
+    btns.forEach((b, idx) => {
+        b.disabled = true;
+        if(idx === q.c) b.classList.add("correct");
+        if(idx === i && i !== q.c) b.classList.add("wrong");
+    });
+
+    if(i === q.c){ state.score++; sound(600); }
+    else { sound(200); }
+    saveState();
+
+    let exp = document.getElementById("explanation");
+    exp.innerHTML = `💡 ${q.e}`;
+    exp.style.display = "block";
+    document.getElementById("nextBtn").style.display = "block";
+}
+
+/* NEXT */
+function next(){
+    state.current++;
+    if(state.current < state.questions.length){ show(); }
+    else { endRound(); }
+}
+
+/* CONTINUE GAME */
+function continueGame(){
+    document.getElementById("menu").style.display = "none";
+    document.getElementById("endArea").style.display = "none";
+    document.getElementById("gameArea").style.display = "block";
+    // Ha a kör már véget ért (current === questions.length), új kört kezdünk
+    if(state.current >= state.questions.length){
+        state.questions = generateQuestions();
+        state.current = 0;
+        state.score = 0;
+        saveState();
+    }
+    show();
+}
+
+/* INIT */
+(function init(){
+    const saved = loadState();
+    if(saved && saved.level){
+        state = saved;
+        const btn = document.getElementById("continueBtn");
+        btn.style.display = "block";
+        document.getElementById("savedInfo").innerText =
+            `Mentett: Lv.${state.level} ${getAvatar(state.level)}  •  ${state.rounds} kör teljesítve`;
+    }
+})();
+
+function endRound(){
+    state.rounds++;
+    let leveled = false;
+    if(state.rounds % 2 === 0){
+        state.level++;
+        leveled = true;
+    }
+    saveState();
+
+    document.getElementById("gameArea").style.display = "none";
+    document.getElementById("endArea").style.display = "block";
+
+    let pct = Math.round((state.score / state.questions.length) * 100);
+    let emoji = pct === 100 ? "🏆" : pct >= 70 ? "🌟" : pct >= 50 ? "👍" : "💪";
+
+    document.getElementById("endScore").innerHTML = `${emoji}<br>${state.score}/${state.questions.length}`;
+    document.getElementById("endMsg").innerText =
+        pct===100 ? "Tökéletes!" : pct>=70 ? "Szép eredmény!" : pct>=50 ? "Jól van, gyakorolj tovább!" : "Ne add fel, próbáld újra!";
+
+    let nextLevelIn = 2 - (state.rounds % 2);
+    document.getElementById("levelupEnd").innerText = leveled
+        ? `🎉 SZINTLÉPÉS! Most: Lv.${state.level} ${getAvatar(state.level)}`
+        : `Szint: Lv.${state.level} ${getAvatar(state.level)}  •  Még ${nextLevelIn} kör a szintlépésig`;
+}
+</script>
+</body>
+</html>
